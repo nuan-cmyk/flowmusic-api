@@ -22,8 +22,8 @@ class GenerationAPI(BaseAPI):
             response.raise_for_status()
             return response.json()
 
-    def start_conversation(self, prompt: str, image_info: Optional[Dict[str, str]] = None, model: str = "producer:standard", mode: str = "standard", selected_model: Optional[str] = None) -> str:
-        """Начинает генерацию и возвращает job_id (conversation_id)."""
+    def start_conversation(self, prompt: str, image_info: Optional[Dict[str, str]] = None, model: str = "producer:standard", mode: str = "standard", selected_model: Optional[str] = None, current_song_id: Optional[str] = None, conversation_id: Optional[str] = None) -> str:
+        """Начинает генерацию или продолжает разговор, возвращает job_id (stream_id)."""
         parts = []
         if image_info:
             import uuid
@@ -67,7 +67,8 @@ class GenerationAPI(BaseAPI):
         payload = {
             "parts": parts,
             "client_context": {
-                "song_queue": [],
+                "song_queue": [{"id": current_song_id}] if current_song_id else [],
+                "current_song_id": current_song_id,
                 "selected_model": selected_model,
                 "lyrics_id_map": {},
                 "ghostwriter_version": "standard"
@@ -75,6 +76,9 @@ class GenerationAPI(BaseAPI):
             "model_name": model,
             "mode": mode
         }
+        if conversation_id:
+            payload["conversation_id"] = conversation_id
+            
         data = self._post("conversation", json=payload)
         return data.get("job_id")
 
@@ -148,3 +152,68 @@ class GenerationAPI(BaseAPI):
             time.sleep(poll_interval)
             
         raise TimeoutError("Время ожидания генерации истекло")
+
+    def get_video_status(self, job_id: str) -> str:
+        """Получает статус генерации видео."""
+        data = self._get(f"music-video/{job_id}/status")
+        return data.get("status", "unknown")
+
+    def generate_video(self, clip_id: str, prompt: str = "Create a music video", model: str = "producer:fast", mode: str = "standard", timeout: int = 180, poll_interval: int = 5) -> str:
+        """Отправляет запрос на генерацию видео, обходит proposal и возвращает id видео."""
+        job_id = self.start_conversation(prompt, None, model, mode, None, current_song_id=clip_id)
+        
+        # 1. Читаем стрим, ищем proposal
+        url = f"{self.base_url}/messages/{job_id}/stream?last_id=0"
+        response = self.session.get(url, stream=True)
+        response.raise_for_status()
+        
+        client = sseclient.SSEClient(response)
+        conversation_id = None
+        for event in client.events():
+            if event.event == "conversation_id":
+                conversation_id = json.loads(event.data).get("id")
+            if event.event == "part":
+                data = json.loads(event.data)
+                part = data.get("part", {})
+                if part.get("part_kind") == "tool-return" and part.get("tool_name") == "video__propose_music_video":
+                    response.close()
+                    break
+                    
+        if not conversation_id:
+            raise RuntimeError("Не удалось получить conversation_id для видео")
+            
+        # 2. Подтверждаем создание (говорим "go")
+        job_id2 = self.start_conversation("Make it happen", None, model, mode, None, current_song_id=clip_id, conversation_id=conversation_id)
+        
+        # 3. Читаем стрим, ищем video_id
+        url2 = f"{self.base_url}/messages/{job_id2}/stream?last_id=0"
+        response2 = self.session.get(url2, stream=True)
+        response2.raise_for_status()
+        
+        client2 = sseclient.SSEClient(response2)
+        video_job_id = None
+        for event in client2.events():
+            if event.event == "part":
+                data = json.loads(event.data)
+                part = data.get("part", {})
+                if part.get("part_kind") == "tool-return" and part.get("tool_name") == "video__create_music_video":
+                    content = part.get("content", {})
+                    video_job_id = content.get("job_id")
+                    if video_job_id:
+                        response2.close()
+                        break
+                        
+        if not video_job_id:
+            raise RuntimeError("Не удалось начать генерацию видео (job_id не найден)")
+            
+        # 4. Поллим статус видео
+        start_time = time.time()
+        while time.time() - start_time < timeout:
+            status = self.get_video_status(video_job_id)
+            if status == "completed":
+                return video_job_id # Можно было бы возвращать объект, но пока достаточно ID
+            if status == "failed":
+                raise RuntimeError("Ошибка при генерации видео")
+            time.sleep(poll_interval)
+            
+        raise TimeoutError("Время ожидания генерации видео истекло")

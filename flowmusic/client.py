@@ -3,6 +3,7 @@ from .api.billing_api import BillingAPI
 from .api.user_api import UserAPI
 from .api.personalize_api import PersonalizeAPI
 from .api.generation_api import GenerationAPI
+from .api.playlists_api import PlaylistsAPI
 
 class FlowMusicClient:
     """
@@ -33,3 +34,4 @@ class FlowMusicClient:
         self.users = UserAPI(self.session, self.base_url)
         self.personalize = PersonalizeAPI(self.session, self.base_url)
         self.generation = GenerationAPI(self.session, self.base_url)
+        self.playlists = PlaylistsAPI(self.session, self.base_url)
