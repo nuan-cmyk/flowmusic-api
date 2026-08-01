@@ -1,36 +1,116 @@
-# Flow Music API Client
+# FlowMusic API (Unofficial Python Client) 🎶🚀
 
-Unofficial Python client for [Flow Music](https://www.flowmusic.app).
-Generate breakcore, lo-fi, pop, and more using their AI engine!
+[![Python Version](https://img.shields.io/badge/python-3.9+-blue.svg)](https://python.org)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## Installation
+Неофициальный Python-клиент для [Flow Music](https://www.flowmusic.app/). Позволяет программно генерировать музыку (в том числе на основе загруженных изображений), проверять баланс кредитов и получать данные профиля. Библиотека использует Pydantic для строгой типизации данных и поддерживает SSE-стриминг для отслеживания статуса генерации треков в реальном времени.
+
+## ✨ Основные возможности
+- **Генерация музыки:** создание треков по текстовому промпту.
+- **Поддержка изображений:** загрузка фото для генерации музыки на основе визуального контента.
+- **Выбор модели:** поддержка быстрого режима (`fast`) и выбора конкретного движка (например, `Lyria 3.5`).
+- **Управление кредитами:** просмотр реального доступного баланса кредитов.
+- **Профиль:** получение данных о пользователе, уровне и истории.
+- **Объектно-ориентированная структура:** удобный клиент и строгая типизация ответов с помощью Pydantic.
+
+---
+
+## 📦 Установка
+
+Поскольку библиотека пока не опубликована в PyPI, вы можете установить её напрямую из GitHub:
 
 ```bash
-pip install -r requirements.txt
-# or
-pip install flowmusic-api
+pip install git+https://github.com/nuan-cmyk/flowmusic-api.git
 ```
 
-## Quick Start
+**Зависимости:**
+- `requests`
+- `pydantic`
+- `sseclient-py`
+
+---
+
+## 🚀 Быстрый старт
+
+### 1. Получение токена авторизации
+Для работы с API вам понадобится ваш личный JWT токен.
+1. Зайдите на сайт [flowmusic.app](https://www.flowmusic.app/) и авторизуйтесь.
+2. Откройте панель разработчика (F12) -> вкладка **Network** (Сеть).
+3. Сделайте любое действие (например, обновите страницу) и найдите любой запрос к `__api/...`.
+4. В заголовках запроса (Request Headers) найдите `Authorization: Bearer <ваш_токен>`.
+5. Скопируйте `<ваш_токен>`.
+
+### 2. Проверка баланса
 
 ```python
 from flowmusic import FlowMusicClient
 
-# Find your token in the browser network tab (Authorization: Bearer <token>)
-client = FlowMusicClient("eyJhb...")
+TOKEN = "ВАШ_JWT_ТОКЕН"
 
-# Check credits
-print("Credits:", client.billing.get_total_credits())
+def main():
+    client = FlowMusicClient(TOKEN)
+    
+    # Получаем информацию о пользователе
+    me = client.users.get_me()
+    print(f"User: {me.username} (ID: {me.id})")
+    
+    # Проверяем текущий баланс кредитов
+    credits = client.billing.get_total_credits()
+    print(f"Total Credits: {credits}")
 
-# Generate a song
-clips = client.generation.generate_music("high-energy breakcore with chaotic amen breaks")
-for clip in clips:
-    print(f"Title: {clip.title}")
-    print(f"Audio URL: {clip.audio_url}")
+if __name__ == "__main__":
+    main()
 ```
 
-## Features
-- **Authentication**: JWT token based
-- **Billing**: Get balance history and calculate total credits
-- **Personalize**: Access user stats (scores, level)
-- **Generation**: Full support for asynchronous song generation and status polling via SSE
+### 3. Генерация трека (с использованием картинки и быстрой модели)
+
+```python
+from flowmusic import FlowMusicClient
+
+TOKEN = "ВАШ_JWT_ТОКЕН"
+client = FlowMusicClient(TOKEN)
+
+try:
+    print("Отправка запроса на генерацию...")
+    clips = client.generation.generate_music(
+        prompt="Create a fast breakcore track with intense amen breaks and glitchy synth leads",
+        # image_path="path/to/your/image.jpg", # Раскомментируйте для генерации по фото
+        model="producer:fast",                 # Быстрый режим продюсера
+        mode="fast",                           
+        selected_model="Lyria 3.5",            # Использование конкретной модели
+        timeout=180,                           # Таймаут ожидания (сек)
+        poll_interval=5                        # Интервал поллинга готовности
+    )
+    
+    print(f"\nУспешно сгенерировано {len(clips)} трека(ов)!")
+    for i, clip in enumerate(clips, 1):
+        print(f"\n--- Трек {i} ---")
+        print(f"ID: {clip.id}")
+        print(f"Title: {clip.title}")
+        print(f"Audio URL: {clip.audio_url}")
+        print(f"Video URL: {clip.video_url}")
+
+except Exception as e:
+    print(f"Ошибка при генерации: {e}")
+```
+
+---
+
+## 📂 Структура проекта
+```text
+flowmusicapi/
+├── flowmusic/
+│   ├── client.py             # Главный клиент (FlowMusicClient)
+│   ├── models/               # Pydantic модели (User, Clip, Billing)
+│   └── api/                  # Модули API
+│       ├── generation_api.py # Генерация и загрузка изображений
+│       ├── billing_api.py    # Баланс кредитов
+│       ├── personalize_api.py# Уровень и скоринг
+│       └── user_api.py       # Данные пользователя
+├── examples/                 # Примеры использования библиотеки
+└── setup.py                  # Установочный скрипт
+```
+
+---
+
+*Этот проект не аффилирован с официальной командой Flow Music. Используйте на свой страх и риск.*
