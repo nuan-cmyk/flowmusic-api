@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+ENV/
+env/
+*.log
+next_data.json
+test.py
+test_html.py
+test2.py
+flowmusicapi.egg-info/
+dist/
+build/
